@@ -1,0 +1,8 @@
+max7219	KEYWORD1
+ic_init	KEYWORD2
+set_bright	KEYWORD2
+ic_shutdown	KEYWORD2
+buff_char	KEYWORD2
+buff_print	KEYWORD2
+buff_dots	KEYWORD2
+disp_update	KEYWORD2
