@@ -1,16 +1,34 @@
 // max7219.c
 // max7219 8-digit display driver for ESP8266 (software SPI)
-// (^^)~ beta 07 08 '23
+// (^^)~  beta 2  13 08 '23
 
 
 #include "max7219-8digit-esp.h"
 
 
-#define MAX7219_BUFF_SIZE  8
-uint8_t max7219buff[MAX7219_BUFF_SIZE] = {0};
+static const uint8_t SHUTDOWN_REGISTER_ADDR = 0x0C;
+static const uint8_t SHUTDOWN_REG_NORMAL_MODE = 0x01;
+static const uint8_t SHUTDOWN_REG_SHUTDOWN_MODE = 0x00;
+
+static const uint8_t DECMODE_REGISTER_ADDR = 0x09;
+static const uint8_t DECMODE_REG_NO_DECODE = 0x00;
+
+static const uint8_t INTESITY_REGISTER_ADDR = 0x0A;
+static const uint8_t INTESITY_REG_MIN_BRIGHT = 0x00;
+
+static const uint8_t SCANLIM_REGISTER_ADDR = 0x0B;
+static const uint8_t SCANLIM_REG_DISP_ALL = 0x07;
+
+static const uint8_t DISPTEST_REGISTER_ADDR = 0x0F;
+static const uint8_t DISPTEST_REG_NORMAL_OP = 0x00;
+static const uint8_t DISPTEST_REG_DISP_TETST = 0x01;
 
 
-const uint8_t dfont[] = //habcdefg
+static const uint8_t MAX7219_BUFF_SIZE = 8;
+static uint8_t max7219buff[MAX7219_BUFF_SIZE] = {0};
+
+
+static const uint8_t dfont[] = //habcdefg
 {
   0b01111110,  //0
   0b00110000,  //1
@@ -46,6 +64,51 @@ const uint8_t dfont[] = //habcdefg
   0b00011100,  //u     //31
   0b00111011   //y     //32
 /*  habcdefg*/
+};
+
+
+static const uint8_t FONT_MAP_SIZE = 37;
+static const uint8_t FONT_MAP_CHAR_CODE = 0;
+static const uint8_t FONT_MAP_DFONT_NUM = 1;
+static const uint8_t fontmap[FONT_MAP_SIZE][2] =
+{
+  {' ',10},
+  {'A',12},
+  {'B',22},
+  {'C',13},
+  {'D',23},
+  {'E',14},
+  {'F',15},
+  {'G',16},
+  {'H',17},
+  {'J',18},
+  {'L',19},
+  {'N',26},
+  {'O',27},
+  {'P',20},
+  {'Q',28},
+  {'R',29},
+  {'T',30},
+  {'U',21},
+  {'Y',32},
+  {'a',12},
+  {'b',22},
+  {'c',24},
+  {'d',23},
+  {'e',14},
+  {'f',15},
+  {'g',16},
+  {'h',25},
+  {'j',18},
+  {'l',19},
+  {'n',26},
+  {'o',27},
+  {'p',20},
+  {'q',28},
+  {'r',29},
+  {'t',30},
+  {'u',31},
+  {'y',32}
 };
 
 
@@ -90,15 +153,15 @@ void Max7219 :: ic_write(uint8_t high, uint8_t low)  //send two bytes to IC
 //-------------------------------------------------------------------------------------------------
 void Max7219 :: ic_init(void)
     {
-    ic_write(0x0C, 0x00);  //Shutdown Register      //shutdown mode
-    ic_write(0x09, 0x00);  //Decode-Mode Register   //no decode
-    ic_write(0x0A, 0x00);  //Intensity Register     //minimum brightness
-    ic_write(0x0B, 0x07);  //Scan-Limit Register    //display all digits
-    ic_write(0x0F, 0x00);  //Display-Test Register  //normal operation
+    ic_write(SHUTDOWN_REGISTER_ADDR, SHUTDOWN_REG_SHUTDOWN_MODE);
+    ic_write(DECMODE_REGISTER_ADDR,  DECMODE_REG_NO_DECODE);
+    ic_write(INTESITY_REGISTER_ADDR, INTESITY_REG_MIN_BRIGHT);
+    ic_write(SCANLIM_REGISTER_ADDR,  SCANLIM_REG_DISP_ALL);
+    ic_write(DISPTEST_REGISTER_ADDR, DISPTEST_REG_NORMAL_OP);
 
     for(uint8_t k=0; k<8; k++) ic_write(k+1, 0x00); //clear screen
 
-    ic_write(0x0C, 0x01);  //Shutdown Register      //normal operation
+    ic_write(SHUTDOWN_REGISTER_ADDR, SHUTDOWN_REG_NORMAL_MODE);
     }
 
 
@@ -107,31 +170,20 @@ void Max7219 :: ic_init(void)
 //-------------------------------------------------------------------------------------------------
 void Max7219 :: buff_char(uint8_t xpos, uint8_t code)
     {
-    uint8_t c=11;                        //"-" //and for undefined characters
+    uint8_t c = '-';                     //for undefined characters
 
     if(code>=48 && code<=57) c=code-48;  //0-9
-    else if(code==32) c=10;              //"space"
-    else if(code==65 || code==97) c=12;  //A //a
-    else if(code==67) c=13;              //C
-    else if(code==69 || code==101) c=14; //E //e
-    else if(code==70 || code==102) c=15; //F //f
-    else if(code==71 || code==103) c=16; //G //g
-    else if(code==72) c=17;              //H
-    else if(code==74 || code==106) c=18; //J //j
-    else if(code==76 || code==108) c=19; //L //l
-    else if(code==80 || code==112) c=20; //P //p
-    else if(code==85) c=21;              //U
-    else if(code==98 || code==66) c=22;  //b //B
-    else if(code==100 || code==68) c=23; //d //D
-    else if(code==99) c=24;              //c
-    else if(code==104) c=25;             //h
-    else if(code==110 || code==78) c=26; //n //N
-    else if(code==111 || code==79) c=27; //o //O
-    else if(code==113 || code==81) c=28; //q //Q
-    else if(code==114 || code==82) c=29; //r //R
-    else if(code==116 || code==84) c=30; //t //T
-    else if(code==117) c=31;             //u
-    else if(code==121 || code==89) c=32; //y //Y
+    else
+        {
+        for(uint8_t k=0; k<FONT_MAP_SIZE; k++) 
+            {
+            if(code==fontmap[k][FONT_MAP_CHAR_CODE])
+                {
+                c=fontmap[k][FONT_MAP_DFONT_NUM];
+                break;
+                }
+            }
+        }
 
     max7219buff[xpos&0b00000111]=dfont[c]|(max7219buff[xpos&0b00000111]&0b10000000);
     }
@@ -156,20 +208,20 @@ void Max7219 :: buff_dots(uint8_t xpos, uint8_t state)
 //-------------------------------------------------------------------------------------------------
 void Max7219 :: disp_update(void)
     {
-    for(uint8_t i=1; i<9; i++) ic_write(9-i, max7219buff[i-1]);
-    for(uint8_t k=0; k<8; k++) max7219buff[k]=0x00;
+    for(uint8_t i=1; i<((MAX7219_BUFF_SIZE)+1); i++) ic_write(((MAX7219_BUFF_SIZE)+1)-i, max7219buff[i-1]);
+    for(uint8_t k=0; k<MAX7219_BUFF_SIZE; k++) max7219buff[k]=0x00;
     }
 
 
 //-------------------------------------------------------------------------------------------------
 void Max7219 :: ic_shutdown(uint8_t mod)  //mode: 0-shutdown mode, 1-normal operation
     {
-    ic_write(0x0C, mod&0b00000001);
+    ic_write(SHUTDOWN_REGISTER_ADDR, mod&0b00000001);
     }
 
 
 //-------------------------------------------------------------------------------------------------
 void Max7219 :: set_bright(uint8_t value)  //brightness: 0-15
     {
-    ic_write(0x0A, value&0b00001111);
+    ic_write(INTESITY_REGISTER_ADDR, value&0b00001111);
     }
